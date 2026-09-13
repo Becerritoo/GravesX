@@ -65,3 +65,4 @@ fabric.properties
 # Maven
 log/
 target/
+dependency-reduced-pom.xml

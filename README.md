@@ -1,3 +1,15 @@
+# GravesX: mantenimiento del fork JL
+
+Este fork contiene personalizaciones del servidor JL; no es una distribucion oficial.
+
+- [Proceso de desarrollo, pruebas y despliegue](MAINTENANCE.md)
+- [Instrucciones para agentes](AGENTS.md)
+- [Registro de cambios y pendientes](CHANGELOG.md)
+- [Documentacion de eventos heredada](developers.md)
+
+La rama del servidor es `jl/server-maintenance`. La rama `jl/compat-1.21.11`
+participa en el PR upstream #252: no enviar alli cambios del servidor automaticamente.
+
 <div align="center">
 	<img width="80" height="80" src="/images/graves_icon_right.png">
 	<img src="/images/graves_logo.png">
