@@ -19,9 +19,26 @@
 
 ### Pendientes
 
+- Revisar reproducibilidad: el POM combina Spigot API 26.1-R0.1-SNAPSHOT
+  con Paper API 1.21.11-R0.1-SNAPSHOT. No se modifican dependencias en esta tarea.
 - Centralizar la inicializacion de BagOfGold en IntegrationManager (PR #252).
 - Ejecutar la matriz de regresion en un servidor de pruebas aislado.
 - Filtro de tumbas por especie del atacante: solicitado para analisis, NO implementado.
+
+### Validacion de formalizacion
+
+- `git diff --check`: correcto.
+- Intento online `mvn -B -ntp package`: detenido tras errores HTTP 522 de
+  maven.devs.beer y advertencias de checksum de metadatos. No fue un build exitoso.
+- `mvn -o -B -ntp package`: BUILD SUCCESS en worktree nuevo, compilando 282
+  fuentes con JDK 21.0.12 y Maven 3.8.7, usando dependencias de la cache local.
+- Commit compilado: `ad88ae673787021fb433ee5f4e2e012c2bc45788`.
+- JAR de prueba: `GravesX-4.9.11.1.jar`.
+- SHA-256: `a1915a28625334fbe7b57f1f539c02bdb168a9ad2683ed69712fab896ee35ac6`.
+- Advertencias de POM de Vault/CommandAPI, APIs obsoletas, shading y Javadoc.
+  No hay pruebas automatizadas ejecutadas (Surefire: No tests to run).
+- Sin pruebas en juego ni despliegue. Exito offline no garantiza resolver todas
+  las dependencias desde una maquina nueva ni equivalencia con el JAR instalado.
 
 ## Historial anterior seleccionado
 

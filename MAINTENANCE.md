@@ -33,6 +33,8 @@ su traslado a IntegrationManager queda pendiente y requiere pruebas independient
 Herramientas observadas al formalizar: JDK 21 y Maven 3.8.7. El POM declara
 source/target Java 17; eso no equivale a certificar el servidor sobre Java 17.
 Las dependencias se definen en pom.xml y las bibliotecas auxiliares en libs/.
+Actualmente se combinan Spigot API 26.1-R0.1-SNAPSHOT y Paper API
+1.21.11-R0.1-SNAPSHOT: revisar esta mezcla antes de certificar una compilacion.
 Usar un clon/worktree separado para probar si hay otros trabajos en curso.
 
 ```sh
