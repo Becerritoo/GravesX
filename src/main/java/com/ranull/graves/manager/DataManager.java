@@ -57,6 +57,8 @@ public class DataManager {
      */
     private HikariDataSource dataSource;
 
+    private volatile boolean graveMapLoaded;
+
     private volatile Set<String> customProviderSanitizedIds = Set.of();
     private volatile List<String> customProviderKeysSnapshot = List.of();
 
@@ -1486,6 +1488,7 @@ public class DataManager {
      * Loads the grave map from the database.
      */
     public void loadGraveMap() {
+        graveMapLoaded = false;
         plugin.getCacheManager().getGraveMap().clear();
         plugin.getLogger().info("Loading grave maps...");
         String query = "SELECT * FROM " + getStoragePrefix() + "grave;";
@@ -1508,6 +1511,7 @@ public class DataManager {
             } else {
                 plugin.getLogger().info("Loaded " + graveCount + " grave maps into cache.");
             }
+            graveMapLoaded = true;
         } catch (SQLException exception) {
             String sqlState = exception.getSQLState();
             String message = exception.getMessage() != null ? exception.getMessage().toLowerCase(java.util.Locale.ROOT) : "";
@@ -1528,6 +1532,10 @@ public class DataManager {
             plugin.getLogger().severe("A null pointer exception occurred while loading Grave Map");
             plugin.logStackTrace(exception);
         }
+    }
+
+    public boolean isGraveMapLoaded() {
+        return graveMapLoaded;
     }
 
     /**
@@ -2010,7 +2018,6 @@ public class DataManager {
     public void removeHologramData(Grave grave) {
         plugin.getSchedulerManager().runTaskAsynchronously(() -> {
             String selectSql = "SELECT uuid_entity, location, line, backend FROM " + getStoragePrefix() + "hologram WHERE uuid_grave = ?";
-            String deleteSql = "DELETE FROM " + getStoragePrefix() + "hologram WHERE uuid_grave = ?";
 
             int scheduledRemovals = 0;
 
@@ -2064,25 +2071,62 @@ public class DataManager {
                         }
 
                         HologramData hologramData = new HologramData(location, uuidEntity, grave.getUUID(), line, backend);
-
-                        plugin.getSchedulerManager().execute(location, () -> {
-                            getChunkData(location).removeEntityData(hologramData);
-                            plugin.getCacheManager().removeEntityData(hologramData);
-                        });
+                        plugin.getHologramManager().removeTrackedHologram(hologramData);
                         scheduledRemovals++;
                     }
                 }
 
-                try (PreparedStatement deleteStmt = connection.prepareStatement(deleteSql)) {
-                    deleteStmt.setString(1, grave.getUUID().toString());
-                    deleteStmt.executeUpdate();
-                }
-
-                plugin.debugMessage("Deleted " + scheduledRemovals + " holograms from DB for grave UUID: " + grave.getUUID(), 2);
+                plugin.debugMessage("Scheduled " + scheduledRemovals
+                        + " hologram removals for grave UUID: " + grave.getUUID(), 2);
 
             } catch (SQLException e) {
                 plugin.getLogger().severe("Error deleting holograms for grave " + grave.getUUID());
                 plugin.logStackTrace(e);
+            }
+        });
+    }
+
+    /**
+     * Removes one hologram record after its entity has been inspected in a loaded chunk.
+     */
+    public void deleteHologramData(HologramData hologramData) {
+        if (hologramData == null || hologramData.getUUIDEntity() == null) {
+            return;
+        }
+
+        Location location = hologramData.getLocation();
+        if (location != null && location.getWorld() != null) {
+            getChunkData(location).removeEntityData(hologramData);
+        }
+        plugin.getCacheManager().removeEntityData(hologramData);
+        deleteHologramData(hologramData.getUUIDEntity());
+    }
+
+    /**
+     * Removes a hologram row by entity UUID. This is also safe for old world
+     * entities whose database row has already disappeared.
+     */
+    public void deleteHologramData(UUID entityUuid) {
+        if (entityUuid == null) {
+            return;
+        }
+
+        EntityData cached = plugin.getCacheManager().getEntityData(entityUuid);
+        if (cached != null) {
+            Location location = cached.getLocation();
+            if (location != null && location.getWorld() != null) {
+                getChunkData(location).removeEntityData(cached);
+            }
+            plugin.getCacheManager().removeEntityData(cached);
+        }
+
+        String query = "DELETE FROM " + getStoragePrefix() + "hologram WHERE uuid_entity = ?";
+        plugin.getSchedulerManager().runTaskAsynchronously(() -> {
+            try {
+                executeUpdate(query, new Object[] { entityUuid.toString() });
+            } catch (SQLException exception) {
+                plugin.getLogger().severe("Failed to delete hologram data for entity " + entityUuid);
+                plugin.logStackTrace(exception);
             }
         });
     }
@@ -2138,9 +2182,18 @@ public class DataManager {
      * @param entityDataList the list of entity data to remove.
      */
     public void removeEntityData(List<EntityData> entityDataList) {
+        List<EntityData> regularEntityData = new ArrayList<>();
+        for (EntityData entityData : entityDataList) {
+            if (entityData instanceof HologramData hologramData) {
+                plugin.getHologramManager().removeTrackedHologram(hologramData);
+            } else {
+                regularEntityData.add(entityData);
+            }
+        }
+
         plugin.getSchedulerManager().runTaskAsynchronously(() -> {
             try {
-                for (EntityData entityData : entityDataList) {
+                for (EntityData entityData : regularEntityData) {
                     Location loc = entityData.getLocation();
 
                     if (loc != null && loc.getWorld() != null) {
@@ -2318,7 +2371,6 @@ public class DataManager {
                 plugin.getHologramManager().removeHologram(grave);
             }
 
-            removeHologramData(grave);
         }
 
         String deleteQuery = "DELETE FROM " + getStoragePrefix() + "grave WHERE uuid = ?";

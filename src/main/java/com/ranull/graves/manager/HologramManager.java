@@ -2,9 +2,16 @@ package com.ranull.graves.manager;
 
 import com.ranull.graves.Graves;
 import com.ranull.graves.data.EntityData;
+import com.ranull.graves.data.HologramData;
 import com.ranull.graves.type.Grave;
+import dev.cwhead.GravesX.keys.GraveHologramKeys;
+import org.bukkit.Chunk;
 import org.bukkit.Location;
+import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.TextDisplay;
+import org.bukkit.persistence.PersistentDataContainer;
+import org.bukkit.persistence.PersistentDataType;
 
 import java.util.List;
 import java.util.Map;
@@ -14,6 +21,9 @@ import java.util.UUID;
  * The HologramManager class is responsible for managing holograms associated with graves.
  */
 public class HologramManager extends EntityDataManager {
+    private static final String HOLOGRAM_TAG = "graveHologram";
+    private static final String GRAVE_UUID_TAG_PREFIX = "graveHologramGraveUUID:";
+
     private final Graves plugin;
 
     public HologramManager(Graves plugin) {
@@ -66,20 +76,155 @@ public class HologramManager extends EntityDataManager {
 
         plugin.debugMessage("[Holograms] removeHologram(grave=" + grave.getUUID() + ") starting", 1);
 
-        if (plugin.getVersionManager().isHasTextDisplays()) {
-            plugin.debugMessage("[Holograms] Routing grave=" + grave.getUUID()
-                    + " removal to TextDisplayManager and ArmorStandManager", 2);
+        List<HologramData> holograms = new java.util.ArrayList<>();
+        for (EntityData entityData : plugin.getCacheManager().getEntityMap().values()) {
+            if (entityData instanceof HologramData hologramData
+                    && grave.getUUID().equals(hologramData.getUUIDGrave())) {
+                holograms.add(hologramData);
+            }
+        }
 
-            plugin.getTextDisplayManager().removeHologram(grave);
-            plugin.getArmorStandManager().removeHologram(grave);
+        if (holograms.isEmpty()) {
+            // The cache may already have been cleared; recover any remaining rows from storage.
+            plugin.getDataManager().removeHologramData(grave);
         } else {
-            plugin.debugMessage("[Holograms] Routing grave=" + grave.getUUID()
-                    + " removal to ArmorStandManager only", 2);
-
-            plugin.getArmorStandManager().removeHologram(grave);
+            for (HologramData hologramData : holograms) {
+                removeTrackedHologram(hologramData);
+            }
         }
 
         plugin.debugMessage("[Holograms] removeHologram(grave=" + grave.getUUID() + ") finished dispatch", 1);
+    }
+
+    /**
+     * Loads the stored chunk, removes the matching physical hologram, and only
+     * then deletes its cache/database record.
+     */
+    public void removeTrackedHologram(HologramData hologramData) {
+        if (hologramData == null || hologramData.getUUIDEntity() == null) {
+            return;
+        }
+
+        plugin.getSchedulerManager().runTask(() -> {
+            Location location = hologramData.getLocation();
+            if (location == null || location.getWorld() == null) {
+                plugin.getLogger().warning("Unable to load hologram location for entity "
+                        + hologramData.getUUIDEntity() + "; keeping its database record for retry.");
+                return;
+            }
+
+            boolean scheduled = plugin.getChunkManager().ensureLoadedAndExecute(
+                    location, location, false, false,
+                    () -> removeTrackedHologramInLoadedChunk(hologramData)
+            );
+
+            if (!scheduled) {
+                plugin.getLogger().warning("Unable to schedule hologram removal for entity "
+                        + hologramData.getUUIDEntity() + "; keeping its database record for retry.");
+            }
+        });
+    }
+
+    private void removeTrackedHologramInLoadedChunk(HologramData hologramData) {
+        Location location = hologramData.getLocation();
+        if (location == null || location.getWorld() == null) {
+            return;
+        }
+
+        Chunk chunk = location.getChunk();
+        UUID graveUuid = hologramData.getUUIDGrave();
+        UUID entityUuid = hologramData.getUUIDEntity();
+        int removed = 0;
+
+        for (Entity entity : chunk.getEntities()) {
+            if (!isGravesHologram(entity)) {
+                continue;
+            }
+
+            UUID taggedGraveUuid = getTaggedGraveUuid(entity);
+            if (entityUuid.equals(entity.getUniqueId())
+                    || (graveUuid != null && graveUuid.equals(taggedGraveUuid))) {
+                entity.remove();
+                removed++;
+            }
+        }
+
+        plugin.debugMessage("[Holograms] Removed " + removed + " physical hologram(s) for grave="
+                + graveUuid + " in chunk " + chunk.getX() + "," + chunk.getZ(), 1);
+        plugin.getDataManager().deleteHologramData(hologramData);
+    }
+
+    /**
+     * Removes GravesX holograms in a loaded chunk when their grave no longer exists.
+     */
+    public int purgeOrphanedHolograms(Chunk chunk) {
+        if (chunk == null || !plugin.getDataManager().isGraveMapLoaded()) {
+            return 0;
+        }
+
+        int removed = 0;
+        for (Entity entity : chunk.getEntities()) {
+            if (!isGravesHologram(entity)) {
+                continue;
+            }
+
+            UUID graveUuid = getTaggedGraveUuid(entity);
+            if (graveUuid != null && plugin.getCacheManager().getGraveMap().containsKey(graveUuid)) {
+                continue;
+            }
+
+            UUID entityUuid = entity.getUniqueId();
+            entity.remove();
+            plugin.getDataManager().deleteHologramData(entityUuid);
+            removed++;
+        }
+
+        if (removed > 0) {
+            plugin.getLogger().info("Removed " + removed + " orphaned grave hologram(s) from "
+                    + chunk.getWorld().getName() + " chunk " + chunk.getX() + "," + chunk.getZ() + ".");
+        }
+        return removed;
+    }
+
+    private boolean isGravesHologram(Entity entity) {
+        if (!(entity instanceof TextDisplay) && !(entity instanceof ArmorStand)) {
+            return false;
+        }
+
+        try {
+            if (entity.getScoreboardTags().contains(HOLOGRAM_TAG)) {
+                return true;
+            }
+        } catch (Throwable ignored) {
+        }
+
+        try {
+            PersistentDataContainer pdc = entity.getPersistentDataContainer();
+            return pdc.has(GraveHologramKeys.GRAVE_UUID, PersistentDataType.STRING);
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private UUID getTaggedGraveUuid(Entity entity) {
+        try {
+            PersistentDataContainer pdc = entity.getPersistentDataContainer();
+            String value = pdc.get(GraveHologramKeys.GRAVE_UUID, PersistentDataType.STRING);
+            if (value != null) {
+                return UUID.fromString(value);
+            }
+        } catch (Throwable ignored) {
+        }
+
+        try {
+            for (String tag : entity.getScoreboardTags()) {
+                if (tag.startsWith(GRAVE_UUID_TAG_PREFIX)) {
+                    return UUID.fromString(tag.substring(GRAVE_UUID_TAG_PREFIX.length()));
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
     }
 
     /**
