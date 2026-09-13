@@ -18,6 +18,7 @@ import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Creature;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
@@ -30,6 +31,7 @@ import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.inventory.InventoryType;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryView;
 import org.bukkit.inventory.ItemStack;
@@ -42,8 +44,44 @@ import java.util.*;
  * Listener for handling entity death events and creating graves.
  */
 public class EntityDeathListener implements Listener {
+    private static final String BR_META_ENSURE_FATAL_DAMAGE = "betterrevive-ensure-fatal-damage";
+    private static final String BR_META_PLAYER_BLED_OUT = "betterrevive-player-bled-out";
+    private static final String BR_META_PLAYER_GAVE_UP = "betterrevive-player-gave-up";
+    private static final String BR_META_BLED_OUT_MESSAGE = "betterrevive-bled-out-message";
+    private static final long BETTER_REVIVE_SNAPSHOT_MAX_AGE_MS = 300_000L;
+    private static final long BETTER_REVIVE_MESSAGE_SNAPSHOT_MAX_AGE_MS = 30_000L;
+
     private final Graves plugin;
     private final BagOfGoldPhysicalMoneyIntegration bagOfGoldPhysicalMoneyIntegration;
+    private final Map<UUID, LastDamageSnapshot> betterReviveCauseSnapshots = new HashMap<>();
+    private final Map<UUID, BetterReviveMessageSnapshot> betterReviveMessageSnapshots = new HashMap<>();
+
+    private static final class LastDamageSnapshot {
+        private final EntityDamageEvent.DamageCause cause;
+        private final UUID killerUUID;
+        private final EntityType killerType;
+        private final String killerName;
+        private final long timestamp;
+
+        private LastDamageSnapshot(EntityDamageEvent.DamageCause cause, UUID killerUUID, EntityType killerType,
+                                   String killerName, long timestamp) {
+            this.cause = cause;
+            this.killerUUID = killerUUID;
+            this.killerType = killerType;
+            this.killerName = killerName;
+            this.timestamp = timestamp;
+        }
+    }
+
+    private static final class BetterReviveMessageSnapshot {
+        private final String message;
+        private final long timestamp;
+
+        private BetterReviveMessageSnapshot(String message, long timestamp) {
+            this.message = message;
+            this.timestamp = timestamp;
+        }
+    }
 
     /**
      * Constructs an EntityDeathListener with the specified Graves plugin.
@@ -53,6 +91,114 @@ public class EntityDeathListener implements Listener {
     public EntityDeathListener(Graves plugin) {
         this.plugin = plugin;
         this.bagOfGoldPhysicalMoneyIntegration = new BagOfGoldPhysicalMoneyIntegration(plugin);
+    }
+
+    /**
+     * Cache the last "real" damage cause for players so GravesX can preserve the original cause
+     * when BetterRevive later applies fatal plugin damage (give up / bled out).
+     */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
+    public void onEntityDamageSnapshot(EntityDamageEvent event) {
+        if (!(event.getEntity() instanceof Player player)) {
+            return;
+        }
+
+        if (shouldIgnoreDamageSnapshot(player, event)) {
+            return;
+        }
+
+        UUID killerUUID = null;
+        EntityType killerType = null;
+        String killerName = null;
+
+        if (event instanceof EntityDamageByEntityEvent byEntityEvent) {
+            Entity damager = byEntityEvent.getDamager();
+            killerUUID = damager.getUniqueId();
+            killerType = damager.getType();
+            killerName = plugin.getEntityManager().getEntityName(damager);
+        }
+
+        betterReviveCauseSnapshots.put(
+                player.getUniqueId(),
+                new LastDamageSnapshot(event.getCause(), killerUUID, killerType, killerName, System.currentTimeMillis())
+        );
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onPlayerQuitCleanup(PlayerQuitEvent event) {
+        betterReviveCauseSnapshots.remove(event.getPlayer().getUniqueId());
+        betterReviveMessageSnapshots.remove(event.getPlayer().getUniqueId());
+    }
+
+    /**
+     * Capture BetterRevive's plain bled-out message before BetterRevive's own death listener
+     * clears metadata. We cache this as a fallback so GravesX can avoid generic MAGIC/CUSTOM
+     * reasons when no reliable original snapshot exists.
+     */
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
+    public void onPlayerDeathPreCapture(PlayerDeathEvent event) {
+        Player player = event.getEntity();
+        if (!player.hasMetadata(BR_META_BLED_OUT_MESSAGE)) {
+            return;
+        }
+
+        List<MetadataValue> metadataValues = player.getMetadata(BR_META_BLED_OUT_MESSAGE);
+        if (metadataValues == null || metadataValues.isEmpty()) {
+            return;
+        }
+
+        String message = metadataValues.get(0).asString();
+        if (message == null || message.isBlank()) {
+            return;
+        }
+
+        betterReviveMessageSnapshots.put(
+                player.getUniqueId(),
+                new BetterReviveMessageSnapshot(message, System.currentTimeMillis())
+        );
+    }
+
+    private boolean shouldIgnoreDamageSnapshot(Player player, EntityDamageEvent event) {
+        if (event.getCause() == EntityDamageEvent.DamageCause.CUSTOM) {
+            return true;
+        }
+
+        // BetterRevive finalization damage should never overwrite the original cause snapshot.
+        return player.hasMetadata(BR_META_ENSURE_FATAL_DAMAGE)
+                || player.hasMetadata(BR_META_PLAYER_BLED_OUT)
+                || player.hasMetadata(BR_META_PLAYER_GAVE_UP);
+    }
+
+    private boolean isBetterReviveFinalState(Player player) {
+        return player.hasMetadata(BR_META_PLAYER_BLED_OUT)
+                || player.hasMetadata(BR_META_PLAYER_GAVE_UP)
+                || player.hasMetadata(BR_META_ENSURE_FATAL_DAMAGE);
+    }
+
+    private boolean isLikelyBetterReviveFinalDamage(EntityDamageEvent event) {
+        if (event == null) {
+            return false;
+        }
+        return event.getCause() == EntityDamageEvent.DamageCause.MAGIC
+                || event.getCause() == EntityDamageEvent.DamageCause.CUSTOM;
+    }
+
+    private void applySnapshotAsKiller(GraveCreateEvent graveCreateEvent, Grave grave, LastDamageSnapshot snapshot) {
+        if (snapshot.killerType != null && snapshot.killerName != null) {
+            graveCreateEvent.setKillerUUID(snapshot.killerUUID);
+            graveCreateEvent.setKillerType(snapshot.killerType);
+            graveCreateEvent.setKillerName(snapshot.killerName);
+            graveCreateEvent.setKillerNameDisplay(snapshot.killerName);
+            return;
+        }
+
+        if (snapshot.cause != null) {
+            String damageReason = plugin.getGraveManager().getDamageReason(snapshot.cause, grave);
+            graveCreateEvent.setKillerUUID(null);
+            graveCreateEvent.setKillerType(null);
+            graveCreateEvent.setKillerName(damageReason);
+            graveCreateEvent.setKillerNameDisplay(damageReason);
+        }
     }
 
     /**
@@ -1130,6 +1276,38 @@ public class EntityDeathListener implements Listener {
      * @param livingEntity The entity that died.
      */
     private void setupGraveKiller(GraveCreateEvent graveCreateEvent, Grave grave, LivingEntity livingEntity) {
+        if (livingEntity instanceof Player player) {
+            UUID playerUUID = player.getUniqueId();
+            LastDamageSnapshot snapshot = betterReviveCauseSnapshots.remove(playerUUID);
+            BetterReviveMessageSnapshot messageSnapshot = betterReviveMessageSnapshots.remove(playerUUID);
+
+            EntityDamageEvent lastDamage = livingEntity.getLastDamageCause();
+            boolean finalStateMetadata = isBetterReviveFinalState(player);
+            boolean likelyFinalDamage = isLikelyBetterReviveFinalDamage(lastDamage);
+
+            boolean freshSnapshot = snapshot != null
+                    && (System.currentTimeMillis() - snapshot.timestamp) <= BETTER_REVIVE_SNAPSHOT_MAX_AGE_MS;
+            boolean meaningfulSnapshot = freshSnapshot
+                    && snapshot.cause != null
+                    && snapshot.cause != EntityDamageEvent.DamageCause.MAGIC
+                    && snapshot.cause != EntityDamageEvent.DamageCause.CUSTOM;
+
+            if (meaningfulSnapshot && (finalStateMetadata || likelyFinalDamage)) {
+                applySnapshotAsKiller(graveCreateEvent, grave, snapshot);
+                return;
+            }
+
+            boolean freshMessage = messageSnapshot != null
+                    && (System.currentTimeMillis() - messageSnapshot.timestamp) <= BETTER_REVIVE_MESSAGE_SNAPSHOT_MAX_AGE_MS;
+            if (freshMessage && (finalStateMetadata || likelyFinalDamage)) {
+                graveCreateEvent.setKillerUUID(null);
+                graveCreateEvent.setKillerType(null);
+                graveCreateEvent.setKillerName(messageSnapshot.message);
+                graveCreateEvent.setKillerNameDisplay(messageSnapshot.message);
+                return;
+            }
+        }
+
         if (livingEntity.getKiller() != null) {
             graveCreateEvent.setKillerType(EntityType.PLAYER);
             graveCreateEvent.setKillerName(livingEntity.getKiller().getName());
