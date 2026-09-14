@@ -238,6 +238,27 @@ public final class BagOfGoldPhysicalMoneyIntegration {
         return floorToScale(total, FLOOR_SCALE);
     }
 
+    public void syncBalanceAfterAutoloot(@NotNull org.bukkit.entity.Player player) {
+        Plugin bagOfGold = plugin.getServer().getPluginManager().getPlugin("BagOfGold");
+        if (bagOfGold == null || !bagOfGold.isEnabled()) return;
+
+        try {
+            Method getInstance = bagOfGold.getClass().getMethod("getInstance");
+            Object instance = getInstance.invoke(null);
+            if (instance == null) return;
+
+            Method getRewardManager = instance.getClass().getMethod("getRewardManager");
+            Object rewardManager = getRewardManager.invoke(instance);
+            if (rewardManager == null) return;
+
+            Method adjustToInventory = rewardManager.getClass()
+                    .getMethod("adjustPlayerBalanceToAmounOfMoneyInInventory", org.bukkit.entity.Player.class);
+            adjustToInventory.invoke(rewardManager, player);
+        } catch (Throwable throwable) {
+            plugin.debugMessage("Failed to sync BagOfGold balance after grave auto-loot: " + throwable.getMessage(), 1);
+        }
+    }
+
     private @Nullable RewardReflectionBridge resolveBridge() {
         if (bridge != null) return bridge;
 

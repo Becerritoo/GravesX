@@ -245,9 +245,14 @@ settings:
     #############
     # BagOfGold #
     #############
-    # Global switch for BagOfGold physical-money split integration.
+    # Global switch for BagOfGold physical-money split and auto-loot balance synchronization.
     # Detailed split behavior/percentages are configured in grave.yml -> physical-money.bagofgold.
     bagofgold:
+      enabled: true
+
+    # Preserve original death attribution when BetterRevive finalizes a death.
+    # Only loaded when BetterRevive is installed and enabled.
+    betterrevive:
       enabled: true
 
     ###############

@@ -17,6 +17,9 @@ loadbefore:
   - ExplodeAny
 
 softdepend:
+  - BagOfGold
+  - CustomItemsLib
+  - BetterRevive
   - AdvancedEnchantments
   - Vault
   - ProtocolLib

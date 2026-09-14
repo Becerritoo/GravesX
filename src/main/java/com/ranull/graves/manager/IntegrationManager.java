@@ -37,6 +37,50 @@ public class IntegrationManager {
      * </p>
      */
     private final Graves plugin;
+    private BagOfGoldPhysicalMoneyIntegration bagOfGold;
+    private BetterReviveIntegration betterRevive;
+
+    public BagOfGoldPhysicalMoneyIntegration getBagOfGold() {
+        return bagOfGold;
+    }
+
+    public boolean hasBagOfGold() {
+        return bagOfGold != null && plugin.getServer().getPluginManager().isPluginEnabled("BagOfGold")
+                && plugin.getConfig().getBoolean("settings.integration.bagofgold.enabled", true);
+    }
+
+    public BetterReviveIntegration getBetterRevive() {
+        return betterRevive;
+    }
+
+    public boolean hasBetterRevive() {
+        return betterRevive != null && plugin.getServer().getPluginManager().isPluginEnabled("BetterRevive")
+                && plugin.getConfig().getBoolean("settings.integration.betterrevive.enabled", true);
+    }
+
+    private void loadBagOfGold() {
+        bagOfGold = null;
+        Plugin dependency = plugin.getServer().getPluginManager().getPlugin("BagOfGold");
+        if (plugin.getConfig().getBoolean("settings.integration.bagofgold.enabled", true)
+                && dependency != null && dependency.isEnabled()) {
+            bagOfGold = new BagOfGoldPhysicalMoneyIntegration(plugin);
+            plugin.integrationMessage("Hooked into " + dependency.getName() + " "
+                    + dependency.getDescription().getVersion() + ".");
+        }
+    }
+
+    private void loadBetterRevive() {
+        if (betterRevive != null) betterRevive.unregisterListeners();
+        betterRevive = null;
+        Plugin dependency = plugin.getServer().getPluginManager().getPlugin("BetterRevive");
+        if (plugin.getConfig().getBoolean("settings.integration.betterrevive.enabled", true)
+                && dependency != null && dependency.isEnabled()) {
+            betterRevive = new BetterReviveIntegration(plugin, dependency);
+            plugin.getServer().getPluginManager().registerEvents(betterRevive, plugin);
+            plugin.integrationMessage("Hooked into " + dependency.getName() + " "
+                    + dependency.getDescription().getVersion() + ".");
+        }
+    }
 
     /**
      * Integration with MultiPaper, a server software or library.
@@ -249,6 +293,8 @@ public class IntegrationManager {
      * Loads all integrations for the Graves plugin.
      */
     public void load() {
+        loadBagOfGold();
+        loadBetterRevive();
         loadMultiPaper();
         loadVault();
         loadProtocolLib();
@@ -294,6 +340,11 @@ public class IntegrationManager {
      * Unloads all integrations associated with the Graves plugin.
      */
     public void unload() {
+        bagOfGold = null;
+        if (betterRevive != null) {
+            betterRevive.unregisterListeners();
+            betterRevive = null;
+        }
         if (furnitureLib != null) {
             furnitureLib.unregisterListeners();
         }
