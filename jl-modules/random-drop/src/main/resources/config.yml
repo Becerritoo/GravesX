@@ -1,0 +1,21 @@
+enabled: true
+debug: false
+bypass-permission: graves.randomdrop.bypass
+
+# How many random entries are dropped to the floor instead of saved in the grave.
+drop-count: 1
+
+# stacks: drops whole inventory slots/stacks.
+# items: drops individual item units from random stacks.
+selection-mode: items
+
+# Prevents empty-grave edge cases when the player dies with very few items.
+leave-at-least-one-stack-in-grave: true
+
+# Let the BagOfGold integration handle physical money splitting by itself.
+ignore-bagofgold-money: true
+
+send-message: false
+
+messages:
+  dropped: "&eUn objeto aleatorio cayo al suelo en vez de guardarse en tu tumba."

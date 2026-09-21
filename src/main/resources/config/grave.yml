@@ -259,8 +259,9 @@ settings:
       ##############
       # Experience #
       ##############
-      # If store-in-grave is false it will drop experience in the world instead of placing them in a grave, if you want to fully disable this plugins experience calculation, set store to 0.0 to use the default vanilla calculation.
-      # Valid values between 0.01 - 1.0
+      # If store-in-grave is false it will drop the configured experience in the world instead of placing it in a grave.
+      # Set store to 0.0 to use Minecraft's vanilla dropped experience amount.
+      # Valid percentage values are between 0.01 - 1.0
       # Note: Experience may double (dupe) if you go above 1.0
       experience:
         store-in-grave: true

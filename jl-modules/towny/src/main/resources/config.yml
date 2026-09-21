@@ -1,0 +1,21 @@
+enabled: true
+bypass-permission: graves.towny.bypass
+grave-material: PLAYER_HEAD
+debug: false
+
+require-build: true
+require-destroy: true
+require-switch: true
+allow-other-towns: false
+
+search-radius: 64
+vertical-range: 24
+max-block-checks: 8192
+max-chunks: 32
+
+cancel-if-no-location: false
+send-relocated-message: true
+
+messages:
+  relocated: "&eTu tumba fue movida a una ubicacion permitida por Towny: &f%world% %x% %y% %z%"
+  no-location: "&cNo se encontro una ubicacion permitida por Towny para tu tumba."

@@ -1,0 +1,12 @@
+name: GravesX-RandomDrop
+version: 1.0.0
+description: Drops random grave items on player death.
+main: dev.jarochitoland.gravesx.randomdrop.RandomDropModule
+authors:
+  - JarochitoLand
+load: COMPLETED
+supportsFolia: true
+permissions:
+  graves.randomdrop.bypass:
+    description: Bypasses GravesX random grave drops.
+    default: op

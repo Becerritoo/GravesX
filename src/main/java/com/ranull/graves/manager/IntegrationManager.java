@@ -39,6 +39,30 @@ public class IntegrationManager {
     private final Graves plugin;
     private BagOfGoldPhysicalMoneyIntegration bagOfGold;
     private BetterReviveIntegration betterRevive;
+    private TownyIntegration towny;
+
+    public TownyIntegration getTowny() {
+        return towny;
+    }
+
+    public boolean hasTowny() {
+        return towny != null && plugin.getServer().getPluginManager().isPluginEnabled("Towny")
+                && plugin.getConfig().getBoolean("settings.integration.towny.enabled", false);
+    }
+
+    private void loadTowny() {
+        towny = null;
+        Plugin dependency = plugin.getServer().getPluginManager().getPlugin("Towny");
+        if (!plugin.getConfig().getBoolean("settings.integration.towny.enabled", false)
+                || dependency == null || !dependency.isEnabled()) return;
+        if (plugin.getVersionManager().isFolia()) {
+            plugin.getLogger().warning("Towny grave relocation is not enabled on Folia: cross-region searching is unsupported.");
+            return;
+        }
+        towny = new TownyIntegration(plugin);
+        plugin.integrationMessage("Hooked into " + dependency.getName() + " "
+                + dependency.getDescription().getVersion() + " for grave relocation.");
+    }
 
     public BagOfGoldPhysicalMoneyIntegration getBagOfGold() {
         return bagOfGold;
@@ -293,6 +317,7 @@ public class IntegrationManager {
      * Loads all integrations for the Graves plugin.
      */
     public void load() {
+        loadTowny();
         loadBagOfGold();
         loadBetterRevive();
         loadMultiPaper();
@@ -340,6 +365,7 @@ public class IntegrationManager {
      * Unloads all integrations associated with the Graves plugin.
      */
     public void unload() {
+        towny = null;
         bagOfGold = null;
         if (betterRevive != null) {
             betterRevive.unregisterListeners();

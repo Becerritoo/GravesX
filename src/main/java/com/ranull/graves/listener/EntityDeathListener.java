@@ -3,6 +3,7 @@ package com.ranull.graves.listener;
 import com.ranull.graves.Graves;
 import com.ranull.graves.compatibility.CompatibilityInventoryView;
 import com.ranull.graves.data.BlockData;
+import com.ranull.graves.integration.TownyIntegration;
 import com.ranull.graves.type.Grave;
 import com.ranull.graves.util.ExperienceUtil;
 import com.ranull.graves.util.LocationUtil;
@@ -165,6 +166,33 @@ public class EntityDeathListener implements Listener {
             }
         }
 
+        TownyIntegration.Placement townyPlacement = null;
+        if (player != null && pde != null && plugin.getIntegrationManager().hasTowny()) {
+            Grave preview = new Grave(UUID.randomUUID());
+            preview.setOwnerType(player.getType());
+            preview.setOwnerUUID(player.getUniqueId());
+            preview.setOwnerName(entityName);
+            preview.setPermissionList(permissionList);
+            preview.setLocationDeath(location);
+            Location proposed = location;
+            if (plugin.getConfigManager().getConfigSection("placement.safe-location", preview)
+                    .getBoolean("placement.safe-location", true)) {
+                Location safe = plugin.getLocationManager().getSafeGraveLocation(player, location, preview);
+                if (safe != null) proposed = safe;
+            }
+            if (plugin.getLocationManager().hasCachedGraveAt(proposed)) {
+                Location free = plugin.getLocationManager().getNewLocationIfCachedGraveExists(player, proposed, preview);
+                if (free != null) proposed = free;
+            }
+            townyPlacement = plugin.getIntegrationManager().getTowny().resolve(player, location, proposed, preview);
+            if (townyPlacement.location() == null) {
+                plugin.getIntegrationManager().getTowny().handleFailure(pde);
+                return;
+            }
+        }
+
+        TownyIntegration.DeathSnapshot townyDeath = townyPlacement == null
+                ? null : TownyIntegration.DeathSnapshot.capture(pde);
         final List<ItemStack> ignoredItemStackList = new ArrayList<>();
         final List<ItemStack> graveItemStackList =
                 getGraveItemStackList(event, livingEntity, permissionList, ignoredItemStackList);
@@ -197,7 +225,7 @@ public class EntityDeathListener implements Listener {
 
         createGrave(event, livingEntity, entityName, permissionList,
                 removedItemStackList, graveItemStackList, ignoredItemStackList,
-                location, pde, player);
+                location, pde, player, townyPlacement, townyDeath);
     }
 
     /**
@@ -682,7 +710,9 @@ public class EntityDeathListener implements Listener {
                              List<ItemStack> ignoredItemStackList,
                              Location location,
                              PlayerDeathEvent pde,
-                             Player player) {
+                             Player player,
+                             TownyIntegration.Placement townyPlacement,
+                             TownyIntegration.DeathSnapshot townyDeath) {
 
         List<Block> ignoredBlockList = new ArrayList<>();
 
@@ -700,7 +730,10 @@ public class EntityDeathListener implements Listener {
         setupGraveKiller(modern, grave, livingEntity);
         setupGraveProtection(modern, livingEntity, grave);
 
-        if (plugin.getConfigManager().getConfigSection("placement.safe-location", grave).getBoolean("placement.safe-location", true)) {
+        if (townyPlacement != null) {
+            event.setDroppedExp(0);
+            modern.setDeathLocation(LocationUtil.roundLocation(townyPlacement.location()));
+        } else if (plugin.getConfigManager().getConfigSection("placement.safe-location", grave).getBoolean("placement.safe-location", true)) {
             Location safeLocation = plugin.getLocationManager().getSafeGraveLocation(livingEntity, location, grave);
             Location target = safeLocation != null ? safeLocation : location;
             event.setDroppedExp(0);
@@ -873,6 +906,13 @@ public class EntityDeathListener implements Listener {
         }
 
         if (!cancelled) {
+            if (townyPlacement != null && plugin.getIntegrationManager().hasTowny()
+                    && !plugin.getIntegrationManager().getTowny().validateFinal(player, location,
+                    modern.getLocationDeath(), grave, townyPlacement.relocated())) {
+                townyDeath.restore(pde);
+                plugin.getIntegrationManager().getTowny().handleFailure(pde);
+                return;
+            }
             grave.setOwnerType(modern.getOwnerType());
             grave.setOwnerName(modern.getOwnerName());
             grave.setOwnerNameDisplay(modern.getOwnerNameDisplay());
@@ -909,6 +949,11 @@ public class EntityDeathListener implements Listener {
                     event, grave, graveItemStackList, removedItemStackList, deathLoc,
                     livingEntity, effectivePerms, player
             );
+
+            if (townyPlacement != null && townyPlacement.relocated() && placedLocation != null
+                    && plugin.getIntegrationManager().hasTowny()) {
+                plugin.getIntegrationManager().getTowny().notifyRelocation(player, placedLocation);
+            }
 
             plugin.getServer().getPluginManager().callEvent(
                     new GravePostCreateEvent(livingEntity, grave, placedLocation)
@@ -1041,9 +1086,8 @@ public class EntityDeathListener implements Listener {
                     graveCreateEvent.setExperience(0);
                     pde.setKeepLevel(true);
                     plugin.debugMessage("Set Dropped Experience not applied to " + grave.getUUID() + " because " + playerDisplay  + " has keep experience.", 2);
-                } else if (pct >= 0 && plugin.getPermissionManager().hasGrantedPermission("graves.experience", p.getPlayer())) {
-                    int total = ExperienceUtil.getPlayerExperience(p);
-                    int stored = ExperienceUtil.getDropPercent(total, pct);
+                } else if (plugin.getPermissionManager().hasGrantedPermission("graves.experience", p.getPlayer())) {
+                    int stored = getConfiguredPlayerExperience(p, pct, vanillaDrop);
                     graveCreateEvent.setExperience(0);
                     pde.setDroppedExp(stored);
                     plugin.debugMessage("Set Dropped Experience for player grave " + grave.getUUID() + ": " + stored, 1);
@@ -1087,9 +1131,8 @@ public class EntityDeathListener implements Listener {
                     graveCreateEvent.setExperience(0);
                     pde.setKeepLevel(true);
                     plugin.debugMessage("Set Grave Experience not applied to " + grave.getUUID() + " because " + playerDisplay  + " has keep experience.", 2);
-                } else if (pct >= 0 && plugin.getPermissionManager().hasGrantedPermission("graves.experience", p.getPlayer())) {
-                    int total = ExperienceUtil.getPlayerExperience(p);
-                    int stored = ExperienceUtil.getDropPercent(total, pct);
+                } else if (plugin.getPermissionManager().hasGrantedPermission("graves.experience", p.getPlayer())) {
+                    int stored = getConfiguredPlayerExperience(p, pct, vanillaDrop);
                     graveCreateEvent.setExperience(stored);
                     plugin.debugMessage("Set Grave Experience for player grave " + grave.getUUID() + ": " + stored, 1);
                     pde.setKeepLevel(false);
@@ -1102,7 +1145,7 @@ public class EntityDeathListener implements Listener {
         } else {
             if (!storeExp) {
                 if (pct >= 0) {
-                    int stored = ExperienceUtil.getDropPercent(vanillaDrop, pct);
+                    int stored = getConfiguredVanillaExperience(vanillaDrop, pct);
                     graveCreateEvent.setExperience(0);
                     pde.setDroppedExp(stored);
                     plugin.debugMessage("Set Dropped Experience for non player grave " + grave.getUUID() + ": " + stored, 1);
@@ -1113,7 +1156,7 @@ public class EntityDeathListener implements Listener {
                 }
             } else {
                 if (pct >= 0) {
-                    int stored = ExperienceUtil.getDropPercent(vanillaDrop, pct);
+                    int stored = getConfiguredVanillaExperience(vanillaDrop, pct);
                     graveCreateEvent.setExperience(stored);
                     plugin.debugMessage("Set Grave Experience for non player grave " + grave.getUUID() + ": " + stored, 1);
                 } else {
@@ -1122,6 +1165,21 @@ public class EntityDeathListener implements Listener {
                 }
             }
         }
+    }
+
+    private int getConfiguredPlayerExperience(Player player, float percent, int vanillaDrop) {
+        if (percent <= 0.0F) {
+            return vanillaDrop;
+        }
+        int total = ExperienceUtil.getPlayerExperience(player);
+        return ExperienceUtil.getDropPercent(total, percent);
+    }
+
+    private int getConfiguredVanillaExperience(int vanillaDrop, float percent) {
+        if (percent <= 0.0F) {
+            return vanillaDrop;
+        }
+        return ExperienceUtil.getDropPercent(vanillaDrop, percent);
     }
 
     /**

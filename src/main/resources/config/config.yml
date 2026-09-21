@@ -255,6 +255,26 @@ settings:
     betterrevive:
       enabled: true
 
+    # Optional relocation when Towny denies build, destroy or switch at a grave.
+    # Applies to players, not only residents. No permissions or claims are changed.
+    # Requires Paper/Bukkit; cross-region searching on Folia is not supported.
+    towny:
+      enabled: false
+      # Prefer an accessible location in the same town, then wilderness.
+      # Other towns are never selected. Only already-loaded chunks are searched.
+      search-radius: 64
+      vertical-range: 8
+      max-chunks: 16
+      max-columns: 4096
+      max-block-checks: 4096
+      # Search stops at the first exhausted budget; a destination is not guaranteed.
+      max-search-ms: 10
+      # If false, normal death drops remain at the original location on failure.
+      failure-keep-inventory: true
+      message-relocated: 'Your grave was moved outside a restricted plot to {world}: {x}, {y}, {z}.'
+      message-failure-kept: 'No accessible grave location was found. Your inventory was preserved.'
+      message-failure-dropped: 'No accessible grave location was found. Your items will drop at your death location.'
+
     ###############
     # ProtocolLib #
     ###############

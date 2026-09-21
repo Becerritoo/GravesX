@@ -1,0 +1,14 @@
+name: GravesX-EconomyVault
+version: 1.0.0
+description: Vault economy charges for GravesX actions.
+main: dev.jarochitoland.gravesx.economyvault.EconomyVaultModule
+authors:
+  - JarochitoLand
+pluginDepends:
+  - Vault
+load: COMPLETED
+supportsFolia: true
+permissions:
+  graves.economyvault.teleport.free:
+    description: Bypasses GravesX teleport economy charges.
+    default: op

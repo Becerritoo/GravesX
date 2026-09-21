@@ -1,0 +1,18 @@
+teleport:
+  enabled: true
+  base-cost: 2.0
+  cost-different-world: 0.0
+  cost-distance-increase: true
+  distance-blocks-per-step: 16.0
+  multiply-base-by-distance: true
+  distance-step-cost: 1.0
+  round-cost: true
+  send-paid-message: true
+  cancel-if-no-economy: false
+  bypass-permission: graves.economyvault.teleport.free
+
+messages:
+  charged: "&aPagaste &e%cost%&a por teletransportarte a tu tumba."
+  not-enough-money: "&cNecesitas &e%cost%&c para teletransportarte a tu tumba."
+  withdraw-failed: "&cNo se pudo cobrar el teletransporte."
+  no-economy: "&cLa economia no esta disponible."

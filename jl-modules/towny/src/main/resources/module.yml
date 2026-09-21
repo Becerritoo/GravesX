@@ -1,0 +1,14 @@
+name: GravesX-Towny
+version: 1.0.0
+description: Towny placement checks for GravesX graves.
+main: dev.jarochitoland.gravesx.towny.TownyModule
+authors:
+  - JarochitoLand
+pluginDepends:
+  - Towny
+load: COMPLETED
+supportsFolia: true
+permissions:
+  graves.towny.bypass:
+    description: Bypasses GravesX Towny placement checks.
+    default: op

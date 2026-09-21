@@ -17,6 +17,7 @@ loadbefore:
   - ExplodeAny
 
 softdepend:
+  - Towny
   - BagOfGold
   - CustomItemsLib
   - BetterRevive

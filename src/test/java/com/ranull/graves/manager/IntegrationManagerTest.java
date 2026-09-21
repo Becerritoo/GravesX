@@ -18,9 +18,10 @@ public class IntegrationManagerTest {
     private IntegrationManager manager;
     private PluginManager plugins;
     private YamlConfiguration config;
+    private Graves graves;
 
     @Before public void setup() throws Exception {
-        Graves graves = mock(Graves.class);
+        graves = mock(Graves.class);
         Server server = mock(Server.class);
         plugins = mock(PluginManager.class);
         config = new YamlConfiguration();
@@ -101,5 +102,39 @@ public class IntegrationManagerTest {
         load("loadBetterRevive");
         assertNull(manager.getBagOfGold());
         assertNull(manager.getBetterRevive());
+    }
+
+    @Test public void townyIsOptInAndRequiresPlugin() throws Exception {
+        load("loadTowny");
+        assertFalse(manager.hasTowny());
+        config.set("settings.integration.towny.enabled", true);
+        load("loadTowny");
+        assertNull(manager.getTowny());
+        dependency("Towny");
+        VersionManager versions = mock(VersionManager.class);
+        when(graves.getVersionManager()).thenReturn(versions);
+        java.lang.reflect.Field instance = com.palmergames.bukkit.towny.TownyAPI.class.getDeclaredField("instance");
+        instance.setAccessible(true);
+        Object previous = instance.get(null);
+        try {
+            instance.set(null, mock(com.palmergames.bukkit.towny.TownyAPI.class));
+            load("loadTowny");
+            assertTrue(manager.hasTowny());
+            manager.unload();
+            assertNull(manager.getTowny());
+        } finally {
+            instance.set(null, previous);
+        }
+    }
+
+    @Test public void townyDoesNotSearchAcrossFoliaRegions() throws Exception {
+        dependency("Towny");
+        config.set("settings.integration.towny.enabled", true);
+        VersionManager versions = mock(VersionManager.class);
+        when(versions.isFolia()).thenReturn(true);
+        when(graves.getVersionManager()).thenReturn(versions);
+        when(graves.getLogger()).thenReturn(java.util.logging.Logger.getAnonymousLogger());
+        load("loadTowny");
+        assertNull(manager.getTowny());
     }
 }
