@@ -337,6 +337,9 @@ settings:
           keep-in-grave-percent: 70
           # Percent of physical money value to drop outside the grave.
           drop-on-ground-percent: 30
+          # Include money stored inside carried shulker boxes and bundles.
+          # The container and its non-money contents remain inside the grave.
+          include-portable-containers: true
           # If split cannot drop anything due to stack granularity, force 1 unit to drop.
           force-minimum-drop-item: true
 
