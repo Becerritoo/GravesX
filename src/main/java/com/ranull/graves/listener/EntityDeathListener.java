@@ -781,7 +781,6 @@ public class EntityDeathListener implements Listener {
         if (plugin.getConfigManager().getConfigSection("placement.safe-location", grave).getBoolean("placement.safe-location", true)) {
             Location safeLocation = plugin.getLocationManager().getSafeGraveLocation(livingEntity, location, grave);
             Location target = safeLocation != null ? safeLocation : location;
-            event.setDroppedExp(0);
             if (plugin.getLocationManager().hasCachedGraveAt(target)) {
                 Location newLoc = plugin.getLocationManager().getNewLocationIfCachedGraveExists(livingEntity, target, grave);
                 if (newLoc != null) {
@@ -790,7 +789,6 @@ public class EntityDeathListener implements Listener {
             }
             modern.setDeathLocation(LocationUtil.roundLocation(target));
         } else {
-            event.setDroppedExp(0);
             Location target = location;
             if (plugin.getLocationManager().hasCachedGraveAt(target)) {
                 Location newLoc = plugin.getLocationManager().getNewLocationIfCachedGraveExists(livingEntity, target, grave);
@@ -1124,7 +1122,7 @@ public class EntityDeathListener implements Listener {
                     graveCreateEvent.setExperience(0);
                     pde.setKeepLevel(true);
                     plugin.debugMessage("Set Dropped Experience not applied to " + grave.getUUID() + " because " + playerDisplay  + " has keep experience.", 2);
-                } else if (pct >= 0 && plugin.getPermissionManager().hasGrantedPermission("graves.experience", p.getPlayer())) {
+                } else if (pct > 0 && plugin.getPermissionManager().hasGrantedPermission("graves.experience", p.getPlayer())) {
                     int total = ExperienceUtil.getPlayerExperience(p);
                     int stored = ExperienceUtil.getDropPercent(total, pct);
                     graveCreateEvent.setExperience(0);
@@ -1170,7 +1168,7 @@ public class EntityDeathListener implements Listener {
                     graveCreateEvent.setExperience(0);
                     pde.setKeepLevel(true);
                     plugin.debugMessage("Set Grave Experience not applied to " + grave.getUUID() + " because " + playerDisplay  + " has keep experience.", 2);
-                } else if (pct >= 0 && plugin.getPermissionManager().hasGrantedPermission("graves.experience", p.getPlayer())) {
+                } else if (pct > 0 && plugin.getPermissionManager().hasGrantedPermission("graves.experience", p.getPlayer())) {
                     int total = ExperienceUtil.getPlayerExperience(p);
                     int stored = ExperienceUtil.getDropPercent(total, pct);
                     graveCreateEvent.setExperience(stored);
@@ -1184,7 +1182,7 @@ public class EntityDeathListener implements Listener {
             }
         } else {
             if (!storeExp) {
-                if (pct >= 0) {
+                if (pct > 0) {
                     int stored = ExperienceUtil.getDropPercent(vanillaDrop, pct);
                     graveCreateEvent.setExperience(0);
                     pde.setDroppedExp(stored);
@@ -1195,7 +1193,7 @@ public class EntityDeathListener implements Listener {
                     plugin.debugMessage("Set Dropped Experience for default grave " + grave.getUUID() + ": " + vanillaDrop, 1);
                 }
             } else {
-                if (pct >= 0) {
+                if (pct > 0) {
                     int stored = ExperienceUtil.getDropPercent(vanillaDrop, pct);
                     graveCreateEvent.setExperience(stored);
                     plugin.debugMessage("Set Grave Experience for non player grave " + grave.getUUID() + ": " + stored, 1);
